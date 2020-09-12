@@ -1,13 +1,17 @@
 let canvas, engine, scene, camera;
 let tet;
 
+let tet_pts;
+let tet_cage;
+let cells_table = new Array(600).map(x=>false);
+cells_table[0] = true;
 
 
 window.onload = function() {
     canvas = document.getElementById("renderCanvas"); 
     engine = new BABYLON.Engine(canvas, true); 
     scene = new BABYLON.Scene(engine);
-    camera = new BABYLON.ArcRotateCamera("Camera", Math.PI / 2, Math.PI / 2, 10, new BABYLON.Vector3(0,0,0), scene);
+    camera = new BABYLON.ArcRotateCamera("Camera", 1.2, 1.2, 10, new BABYLON.Vector3(0,0,0), scene);
     camera.attachControl(canvas, true);
 
     var light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(1, 1, 0), scene);
@@ -27,16 +31,15 @@ window.onload = function() {
     engine.runRenderLoop(function () {scene.render();});
     window.addEventListener("resize", function () { engine.resize(); });
 
-    processData();
 };
 
 function onPointerDown(e) {
   if(e.pickInfo.pickedMesh) {
     let mesh = e.pickInfo.pickedMesh;
-    let faceIndex = e.pickInfo.subMeshFaceId;
-    console.log(mesh, faceIndex);
     if(mesh.name == "tet" || mesh.name == "tet-inst") {
-      foo(e.pickInfo.pickedMesh, e.pickInfo.subMeshFaceId);
+      let faceIndex = e.pickInfo.subMeshFaceId;
+      console.log(mesh, faceIndex);
+      addCell(mesh, faceIndex);
     }
   }
 }
@@ -113,17 +116,22 @@ function createDot(p,color) {
   return dot;
 }
 
+function createTetGeometry() {
+  let pts = [];
+  for(let i=0; i<3; i++) {
+    let phi = -Math.PI*2*i/3;
+    pts.push(new BABYLON.Vector3(Math.cos(phi), 0, Math.sin(phi)));
+  }
+  let edgeLength = BABYLON.Vector3.Distance(pts[0], pts[1]);
+  let height = edgeLength * Math.sqrt(2/3);
+  pts.push(new BABYLON.Vector3(0,height,0));
+  tet_pts = pts;
+
+}
+
 function createTetMesh() {
     let tet = new BABYLON.Mesh("tet", scene);
-
-    let pts = [];
-    for(let i=0; i<3; i++) {
-      let phi = -Math.PI*2*i/3;
-      pts.push(new BABYLON.Vector3(Math.cos(phi), 0, Math.sin(phi)));
-    }
-    let edgeLength = BABYLON.Vector3.Distance(pts[0], pts[1]);
-    let height = edgeLength * Math.sqrt(2/3);
-    pts.push(new BABYLON.Vector3(0,height,0));
+    let pts = tet_pts;
 
     let positions = [];
     let indices = [];
@@ -178,6 +186,7 @@ function createTetMesh() {
 
     tet.pts = pts;
 
+    /*
     let dot;
     dot = createDot(pts[0], new BABYLON.Color3(1,0,0));
     dot.parent = tet;
@@ -187,13 +196,112 @@ function createTetMesh() {
     dot.parent = tet;
     dot = createDot(pts[3], new BABYLON.Color3(0,1,1));
     dot.parent = tet;
-    
+    */
+
     return tet;
 }
 
-function foo(mesh, faceIndex){
+function createTetCage() {
+  let cage = new BABYLON.Mesh('cage', scene);
+  cage.textures = [];
+
+  let pts = tet_pts.map(p => p.scale(1.1));
+
+  let lines = BABYLON.MeshBuilder.CreateLineSystem(
+    "lines", {
+            lines: [
+              [pts[0], pts[1], pts[2], pts[3], pts[0]], 
+              [pts[0], pts[2]], 
+              [pts[1], pts[3]]
+            ]
+            // colors: colors,            
+    }, 
+    scene);
+  lines.parent = cage;
+
+  for(let i=0; i<pts.length; i++) {
+    let pvt = new BABYLON.Mesh('', scene);
+    pvt.position.copyFrom(pts[i].scale(1.1));
+    pvt.parent = cage;
+    var m = BABYLON.Mesh.CreatePlane('', .4, scene);
+    m.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL
+    m.parent = pvt;    
+    var tex = new BABYLON.DynamicTexture('', {width:64, height:64}, scene);   
+    tex.hasAlpha = true;
+    cage.textures.push(tex);
+    tex.drawText("ABCD"[i], 10, 30, "bold 32px monospace", 'white', null, true, false);
+    tex.drawText(tet.tags[i], 10, 60, "bold 32px monospace", 'white', null, true, false);
+    tex.update();
+    m.material = new BABYLON.StandardMaterial('', scene);
+    m.material.diffuseTexture = tex;
+    // m.material.useAlphaFromDiffuseTexture = true;
+    m.material.diffuseColor.set(1,1,1);
+    m.material.specularColor.set(0,0,0);
+
+  }
+  return cage;
+}
+
+
+function updateCageTextures(tags) {
+  for(let i=0; i<tet_cage.textures.length; i++) {
+    let tex = tet_cage.textures[i];
+    let ctx = tex.getContext();
+    ctx.clearRect(0,0,64,64);
+    tex.drawText("ABCD"[i], 10, 30, "bold 32px monospace", 'white', null, true, false);
+    tex.drawText(tags[i], 10, 60, "bold 32px monospace", 'white', null, true, false);
+    tex.update();
+  }
+}
+
+function match(cell_vertices, key) {
+  let opposite = null;
+  let i = 0, j = 0;
+  while(i<4 && j<3) {
+    if(cell_vertices[i]==key[j]) {i++; j++; }
+    else if(cell_vertices[i]<key[j]) {
+      if(opposite != null) return null;
+      opposite = cell_vertices[i]; 
+      i++;
+    } else {
+      return null;
+    }
+  }
+  if(i==3 && opposite == null) opposite = cell_vertices[i];
+  return opposite;
+}
+
+const face_vertices = [[0,1,2,3],[0,2,3,1],[0,3,1,2],[3,2,1,0]];
+
+function getCell(cell_vertices, faceIndex) {
+  let q = face_vertices[faceIndex].map(i=>cell_vertices[i]);
+  let key = [q[0],q[1],q[2]].sort((a,b)=>a-b);
+  let res = []
+  cells.forEach((vv,i) => {
+    let opposite = match(vv, key);
+    if(opposite != null) {
+      res.push({index:i, vv:vv, opposite:opposite});
+    }
+  })
+  if(res.length != 2) throw "error";
+  let a = res[0].opposite;
+  let b = res[1].opposite;
+  if(a == b || a!=q[3] && b!=q[3]) throw "error2";
+  if(a==q[3]) return [res[1].index, b];
+  else return [res[0].index, a];
+}
+
+
+function addCell(mesh, faceIndex) {
+
+  let [otherCellIndex, otherCellOpposite] = getCell(mesh.tags, faceIndex);
+  let otherCell  = cells[otherCellIndex];
+
+  if(cells_table[otherCellIndex]) return;
+  cells_table[otherCellIndex] = true;
+
   let matrix = mesh.computeWorldMatrix(true);
-  let pts = [[0,1,2],[0,2,3],[0,3,1],[3,2,1]][faceIndex]
+  let pts = face_vertices[faceIndex]
     .map(j=> BABYLON.Vector3.TransformCoordinates(tet.pts[j],matrix));
   
   let c = pts[0].add(pts[1]).add(pts[2]).scale(1/3);
@@ -215,6 +323,15 @@ function foo(mesh, faceIndex){
     let inst = tet.createInstance('tet-inst');
     inst.rotationQuaternion = BABYLON.Quaternion.FromRotationMatrix(destMatrix);
     inst.position.copyFrom(destMatrix.getTranslation());
+
+    tet_cage.parent = null;
+    tet_cage.rotationQuaternion = inst.rotationQuaternion;
+    tet_cage.position.copyFrom(inst.position);
+
+    let vv = face_vertices[faceIndex].map(i=>mesh.tags[i]);
+    let vv2 = [vv[0],vv[2],vv[1],otherCellOpposite];
+    inst.tags = vv2;
+    updateCageTextures(vv2);
     return;
   }
   
@@ -253,36 +370,12 @@ function foo(mesh, faceIndex){
 
 
 function populateScene() {
+  createTetGeometry();
   tet = createTetMesh();
+  tet.tags = cells[0];
+  tet_cage = createTetCage();
   createGrid();
   //foo();
 
-
-}
-
-let cells;
-
-function processData()
-{
-  cells = new Array(600);
-  let tb = {};  
-  for(let i=0; i<600; i++) {
-    for(let j=0; j<4; j++) {
-      let f = cells_faces[i*4+j];
-      if(tb[f]) tb[f].push(i);
-      else tb[f] = [i];
-    }
-  }
-  for(let i=0; i<600; i++) {
-    cells[i] = [];
-    for(let j=0; j<4; j++) {
-      let cc = tb[cells_faces[i*4+j]];
-      let other;
-      if(cc[0] == i) other = cc[1];
-      else if(cc[1] == i) other = cc[0];
-      else console.error(i);
-      cells[i].push(other);
-    }
-  }
 
 }
