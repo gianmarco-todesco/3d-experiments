@@ -97,7 +97,7 @@ class Model {
     cell = {
       index:otherCellIndex, 
       vertices:[0,1,2,3].map(i => { return {
-        index: ii[i],
+        index: [ii[0],ii[2],ii[1],ii[3]][i],
         pos: [p0,p2,p1,p4][i]}})
     };
     this.cells.push(cell);
@@ -263,6 +263,7 @@ class Model {
     let j = this.cells.findIndex(c=>c.index == cellIndex);
     if(j<0) { console.warn("cell not found: ", cellIndex); return; }
     let pts = this.cells[j].vertices.map(v=>v.pos);
+    let ii = this.cells[j].vertices.map(v=>v.index);
     let cellCenter = pts[0].add(pts[1]).add(pts[2]).add(pts[3]).scale(0.25);
     pts = pts.map(p => BABYLON.Vector3.Lerp(cellCenter, p, 1.1));
     let lines = [[pts[0],pts[1],pts[2],pts[3],pts[0]],[pts[0],pts[2]],[pts[3],pts[1]]];
@@ -275,6 +276,43 @@ class Model {
           lines: lines, 
           updatable: true}, 
           scene);
+
+    if(this.labels === undefined) {
+      let labels = this.labels = [];
+      for(let i=0;i<4;i++)
+        labels.push(this.createLabel(scene));
+    }
+    for(let i=0; i<4; i++) {
+      let label = this.labels[i];
+      label.position.copyFrom(BABYLON.Vector3.Lerp(cellCenter, pts[i], 1.1));
+      let tex = label.texture;
+      tex.getContext().clearRect(0,0,64,64);
+      tex.drawText("#"+"01234"[i], 10, 30, "bold 32px monospace", 'white', null, true, false);
+      tex.drawText(ii[i], 10, 60, "bold 32px monospace", 'white', null, true, false);
+      tex.update();  
+    }
+    
+
+    
+
+
+  }
+
+
+  createLabel(scene) {
+    let pvt = new BABYLON.Mesh("",scene);
+    var m = BABYLON.Mesh.CreatePlane('', .4, scene);
+    m.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL
+    m.parent = pvt;    
+    var tex = new BABYLON.DynamicTexture('', {width:64, height:64}, scene);   
+    tex.hasAlpha = true;
+    m.material = new BABYLON.StandardMaterial('', scene);
+    m.material.diffuseTexture = tex;
+    // m.material.useAlphaFromDiffuseTexture = true;
+    m.material.diffuseColor.set(1,1,1);
+    m.material.specularColor.set(0,0,0);
+    pvt.texture = tex;
+    return pvt;
   }
 };
 
