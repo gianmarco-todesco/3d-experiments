@@ -21,9 +21,14 @@ class Viewer {
     this.populateScene();
     const me = this;
     scene.onPointerObservable.add((pointerInfo) => {
+      let pickInfo = pointerInfo.pickInfo;
       switch (pointerInfo.type) {
           case BABYLON.PointerEventTypes.POINTERDOWN:
-              me.onPointerDown(pointerInfo);
+            // console.log(pointerInfo);
+            if(me.onPointerDown) {
+                if(pickInfo.pickedMesh)
+                    me.onPointerDown(pickInfo.pickedMesh, pickInfo.subMeshFaceId);
+              }
               break;
       }
     });
@@ -38,9 +43,6 @@ class Viewer {
 
   }
 
-  onPointerDown() {
-
-  }
 
 };
 
@@ -182,8 +184,9 @@ class Model {
     let d = 0.1;
     let uvs0 = [d,d, 1-d,d, 0.5,d + Math.sqrt(3)/2 * (1-2*d)];
     let vCount = 0;
-    this.cells.forEach(cell => {
-      console.log("new cell")
+    let faceTable = [];
+    this.cells.forEach((cell, cellIndex) => {
+      // console.log("new cell")
       let vertices = cell.vertices;
       this.face_vertices.forEach(([a,b,c,d]) => {
         let vv=[a,b,c];
@@ -196,6 +199,7 @@ class Model {
         uvs.push(...uvs0);
         let i = vCount;
         indices.push(i,i+1,i+2);
+        faceTable.push(cellIndex);
         vCount += 3;
       })
     })
@@ -206,46 +210,12 @@ class Model {
     vd.indices = indices;  
     vd.normals = normals;  
     vd.uvs = uvs;
-    let tet = new BABYLON.Mesh("tet", scene);
+    let tet = new BABYLON.Mesh("tet-net", scene);
+    tet.faceTable = faceTable;
     vd.applyToMesh(tet);
     this.mesh = tet;
     if(!this.material) this.material = this.createMaterial(scene, uvs0);
     tet.material = this.material;
-    return tet;
-  }
-
-  createTetMesh(scene) {
-    const pts = this.tet_pts;
-    let positions = [];
-    let normals = [];
-    let uvs = [];
-    let indices = [];
-    let d = 0.1;
-    let uvs0 = [d,d, 1-d,d, 0.5,d + Math.sqrt(3)/2 * (1-2*d)];
-
-
-    this.face_vertices.forEach(([a,b,c,d]) => {
-      // let center = pts[a].add(pts[b]).add(pts[c]).scale(1/3);
-      let nrm = BABYLON.Vector3.Cross(pts[c].subtract(pts[a]), pts[b].subtract(pts[a])).normalize();
-      [a,b,c].forEach(j => {
-          let p = pts[j];
-          positions.push(p.x,p.y,p.z);
-          normals.push(nrm.x,nrm.y,nrm.z);
-      });
-      uvs.push(...uvs0);
-    });
-    indices.push(0,1,2, 3,4,5, 6,7,8, 9,10,11);
-    let vd = new BABYLON.VertexData();
-    vd.positions = positions;
-    vd.indices = indices;  
-    vd.normals = normals;  
-    vd.uvs = uvs;
-
-    let tet = new BABYLON.Mesh("tet", scene);
-    vd.applyToMesh(tet);
-
-    tet.material = this.createMaterial(scene, uv0);
-
     return tet;
   }
 
@@ -280,11 +250,16 @@ class Model {
     let pts = this.cells[j].vertices.map(v=>v.pos);
     let cellCenter = pts[0].add(pts[1]).add(pts[2]).add(pts[3]).scale(0.25);
     pts = pts.map(p => BABYLON.Vector3.Lerp(cellCenter, p, 1.1));
-    let lines = [[pts[0],pts[1],pts[2],pts[3]],[pts[0],pts[2]],[pts[3],pts[1]]];
+    let lines = [[pts[0],pts[1],pts[2],pts[3],pts[0]],[pts[0],pts[2]],[pts[3],pts[1]]];
     if(this.cage) 
-      this.cage = BABYLON.MeshBuilder.CreateLineSystem("ls", {lines: lines, instance: this.cage}, scene);
+      this.cage = BABYLON.MeshBuilder.CreateLineSystem("ls", {
+          lines: lines, 
+          instance: this.cage});
     else
-      this.cage = BABYLON.MeshBuilder.CreateLineSystem("ls", {lines: lines}, scene);
+      this.cage = BABYLON.MeshBuilder.CreateLineSystem("ls", {
+          lines: lines, 
+          updatable: true}, 
+          scene);
   }
 };
 
@@ -295,6 +270,13 @@ let viewer;
 let model;
 let tet;
 let currentIndex;
+
+function onModelChanged() {
+  model.createMesh(viewer.scene);
+  let boundingSphere = model.mesh.getBoundingInfo().boundingSphere;
+  viewer.camera.setTarget(boundingSphere.center);  
+  updateCellNumber();
+}
 
 function updateCellNumber() {
   let span = document.getElementById('cell-number');
@@ -308,18 +290,15 @@ function highlightCurrentCell() {
 function addCell(cellIndex, faceIndex) {
   let cell = model.addCell(cellIndex, faceIndex);
   if(cell) {
-    model.createMesh(viewer.scene);
-    currentIndex = cell.index;
-    updateCellNumber();
-    highlightCurrentCell();
+    onModelChanged();
+    setCurrentIndex(cell.index);
   }
 }
 
 function deleteCell(cellIndex) {
   model.deleteCell(cellIndex);
-  model.createMesh(viewer.scene);
-  updateCellNumber();
-  highlightCurrentCell();
+  onModelChanged();
+  setCurrentIndex(model.cells[model.cells.length-1].index);
 }
 
 function addCellToCurrent(faceIndex) {
@@ -329,10 +308,14 @@ function addCellToCurrent(faceIndex) {
 function deleteCurrentCell() {
   if(typeof(currentIndex) == "number") {
     deleteCell(currentIndex);
-    currentIndex = model.cells[model.cells.length-1].index;
   }
 }
 
+function setCurrentIndex(index) {
+  if(currentIndex == index) return;
+  currentIndex = index;
+  highlightCurrentCell();
+}
 
 window.onload = function() {
   viewer = new Viewer('renderCanvas');
@@ -340,7 +323,19 @@ window.onload = function() {
   // model.createTetMesh(viewer.scene);
   model.addFirstCell();
   currentIndex = 0;
+  highlightCurrentCell();
   tet = model.createMesh(viewer.scene);  
+
+  viewer.onPointerDown = (mesh, faceIndex) => {
+    if(mesh.name == "tet-net" && mesh.faceTable !== undefined) {
+      console.log("face:", faceIndex);
+      let cellIndex = mesh.faceTable[faceIndex];
+      console.log("cell-index:", cellIndex);
+      if(0<=cellIndex && cellIndex<model.cells.length) {
+        setCurrentIndex(model.cells[cellIndex].index);
+      }
+    }
+  }
 }
 
 
