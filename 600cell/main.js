@@ -59,6 +59,16 @@ class Model {
     this.cellTable = {};
   }
 
+  addFaces(cell) {
+    cell.faces  = this.face_vertices.map(([a,b,c,_]) => {
+      let vv = [a,b,c]
+        .map(i=>cell.vertices[i].index)
+        .sort((x,y)=>x-y);
+      
+      return vv[0] + vv[1] * 1000 + vv[2] * 1000000;      
+    });
+  }
+
   addFirstCell() {
     const ii = vertices_by_cells[0];
     let cell = {
@@ -70,6 +80,7 @@ class Model {
     };
     this.cells = [cell];
     this.cellTable = {0 : cell};
+    this.addFaces(cell);
   }
 
   addCell(cellIndex, faceIndex) {
@@ -93,15 +104,21 @@ class Model {
     let [p0,p1,p2,p3] = vertices.map(v=>v.pos);
     let fc = p0.add(p1).add(p2).scale(1/3);
     let p4 = fc.add(fc.subtract(p3));
-    let ii = vertices_by_cells[otherCellIndex];
+
+    let pts = [p0,p2,p1,p4];
+    let ii = vertices.map(v=>v.index);
+    ii[3] = opposite;
+    let tmp = ii[2]; ii[2] = ii[1]; ii[1] = tmp;
+
     cell = {
       index:otherCellIndex, 
       vertices:[0,1,2,3].map(i => { return {
-        index: [ii[0],ii[2],ii[1],ii[3]][i],
-        pos: [p0,p2,p1,p4][i]}})
+        index: ii[i],
+        pos: pts[i]}})
     };
     this.cells.push(cell);
     this.cellTable[cell.index] = cell;
+    this.addFaces(cell);
     return cell;
   }
 
@@ -177,7 +194,21 @@ class Model {
     this.tet_pts = pts;
   }
 
+  computeSharedFaces() {
+    let sharedFaces = [];
+    let tb = {}
+    this.cells.forEach(cell => {
+      cell.faces.forEach(face => {
+        let q = tb[face];
+        if(q===undefined) tb[face] = 1;
+        else { tb[face] ++; sharedFaces.push(face); }
+      })
+    })
+    return sharedFaces;
+  }
+
   createMesh(scene) {
+    let sharedFaces = this.computeSharedFaces();
     let positions = [];
     let normals = [];
     let uvs = [];
@@ -198,8 +229,12 @@ class Model {
           positions.push(p.x,p.y,p.z);
           normals.push(nrm.x,nrm.y,nrm.z);
         });
+
+        let yoff = 0;
+        if(sharedFaces.indexOf(cell.faces[faceIndex])>=0) 
+          yoff = 0.5;
         // console.log(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y]));
-        uvs.push(...(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y])));
+        uvs.push(...(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y+yoff])));
         let i = vCount;
         indices.push(i,i+1,i+2);
         faceTable.push(cellIndex);
@@ -328,6 +363,7 @@ function onModelChanged() {
   model.createMesh(viewer.scene);
   let boundingSphere = model.mesh.getBoundingInfo().boundingSphere;
   viewer.camera.setTarget(boundingSphere.center);  
+  viewer.camera.radius = boundingSphere.radius * 2;
   updateCellNumber();
 }
 
