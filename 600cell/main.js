@@ -13,6 +13,7 @@ class Viewer {
       new BABYLON.Vector3(0,0,0), 
       scene);
     camera.attachControl(canvas, true);
+    camera.wheelPrecision = 50;
 
     // var light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(1, 1, 0), scene);
     var light2 = new BABYLON.PointLight("light2", new BABYLON.Vector3(0, 0, 0), scene);            
@@ -182,13 +183,14 @@ class Model {
     let uvs = [];
     let indices = [];
     let d = 0.1;
-    let uvs0 = [d,d, 1-d,d, 0.5,d + Math.sqrt(3)/2 * (1-2*d)];
+    let uvs0 = [[d,d], [1-d,d], [0.5,d + Math.sqrt(3)/2 * (1-2*d)]]
+      .map(([x,y]) => [x * 0.25, y * 0.5]);
     let vCount = 0;
     let faceTable = [];
     this.cells.forEach((cell, cellIndex) => {
       // console.log("new cell")
       let vertices = cell.vertices;
-      this.face_vertices.forEach(([a,b,c,d]) => {
+      this.face_vertices.forEach(([a,b,c,d],faceIndex) => {
         let vv=[a,b,c];
         let pts = vv.map(i=>vertices[i].pos);
         let nrm = BABYLON.Vector3.Cross(pts[2].subtract(pts[0]), pts[1].subtract(pts[0])).normalize();
@@ -196,14 +198,14 @@ class Model {
           positions.push(p.x,p.y,p.z);
           normals.push(nrm.x,nrm.y,nrm.z);
         });
-        uvs.push(...uvs0);
+        // console.log(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y]));
+        uvs.push(...(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y])));
         let i = vCount;
         indices.push(i,i+1,i+2);
         faceTable.push(cellIndex);
         vCount += 3;
       })
     })
-
     if(this.mesh) this.mesh.dispose();
     let vd = new BABYLON.VertexData();
     vd.positions = positions;
@@ -223,21 +225,34 @@ class Model {
   createMaterial(scene, uvs0) {
     let mat = new BABYLON.StandardMaterial('tetmat', scene);
     mat.diffuseColor.set(0.8,0.8,0.8);
-    var dtex = new BABYLON.DynamicTexture('tettex', 512, scene);   
+    mat.specularColor.set(0.1,0.1,0.1);
+    var dtex = new BABYLON.DynamicTexture('tettex', {width:1024, height:512}, scene);   
     mat.diffuseTexture = dtex;
     let ctx = dtex.getContext();
-    let tpts = uvs0.map(x => x * 512);
 
-    ctx.beginPath();
-    ctx.moveTo(tpts[0], 512 - tpts[1]);
-    ctx.lineTo(tpts[2], 512 - tpts[3]);
-    ctx.lineTo(tpts[4], 512 - tpts[5]);
-    ctx.lineTo(tpts[0], 512 - tpts[1]);
-    ctx.fillStyle = "orange";
-    ctx.fill();
-    ctx.strokeStyle = "black";
-    ctx.lineWidth=15;
-    ctx.stroke();
+    //let myCanvas = document.getElementById("mycanvas");
+    //ctx = myCanvas.getContext('2d');
+    for(let i=0; i<4; i++) {
+      let tpts = uvs0.map(([x,y]) => [x * 1024 + i*256, 512 - y * 512]);
+      console.log(tpts);
+      ctx.beginPath();
+      ctx.moveTo(tpts[2][0], tpts[2][1]);
+      for(let j=0;j<=2;j++)
+        ctx.lineTo(tpts[j][0], tpts[j][1]);
+      ctx.closePath();
+      ctx.fillStyle = "orange";
+      ctx.fill();
+      ctx.strokeStyle = "black";
+      ctx.lineWidth=15;
+      ctx.stroke();
+  
+      ctx.font = 'bold 120px monospace';
+      // const font = "bold 44px monospace";
+      // dtex.drawText("ABCD"[0],100,100, font, "black", null, false, false);
+      ctx.fillStyle = "black";
+      ctx.fillText("ABCD"[i], tpts[0][0]+65, tpts[0][1] - 20);
+  
+    }
 
     dtex.update();
     return mat;
