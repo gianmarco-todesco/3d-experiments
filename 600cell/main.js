@@ -59,6 +59,16 @@ class Model {
     this.cellTable = {};
   }
 
+  addFaces(cell) {
+    cell.faces  = this.face_vertices.map(([a,b,c,_]) => {
+      let vv = [a,b,c]
+        .map(i=>cell.vertices[i].index)
+        .sort((x,y)=>x-y);
+      
+      return vv[0] + vv[1] * 1000 + vv[2] * 1000000;      
+    });
+  }
+
   addFirstCell() {
     const ii = vertices_by_cells[0];
     let cell = {
@@ -70,6 +80,7 @@ class Model {
     };
     this.cells = [cell];
     this.cellTable = {0 : cell};
+    this.addFaces(cell);
   }
 
   addCell(cellIndex, faceIndex) {
@@ -93,15 +104,21 @@ class Model {
     let [p0,p1,p2,p3] = vertices.map(v=>v.pos);
     let fc = p0.add(p1).add(p2).scale(1/3);
     let p4 = fc.add(fc.subtract(p3));
-    let ii = vertices_by_cells[otherCellIndex];
+
+    let pts = [p0,p2,p1,p4];
+    let ii = vertices.map(v=>v.index);
+    ii[3] = opposite;
+    let tmp = ii[2]; ii[2] = ii[1]; ii[1] = tmp;
+
     cell = {
       index:otherCellIndex, 
       vertices:[0,1,2,3].map(i => { return {
-        index: [ii[0],ii[2],ii[1],ii[3]][i],
-        pos: [p0,p2,p1,p4][i]}})
+        index: ii[i],
+        pos: pts[i]}})
     };
     this.cells.push(cell);
     this.cellTable[cell.index] = cell;
+    this.addFaces(cell);
     return cell;
   }
 
@@ -177,7 +194,21 @@ class Model {
     this.tet_pts = pts;
   }
 
+  computeSharedFaces() {
+    let sharedFaces = [];
+    let tb = {}
+    this.cells.forEach(cell => {
+      cell.faces.forEach(face => {
+        let q = tb[face];
+        if(q===undefined) tb[face] = 1;
+        else { tb[face] ++; sharedFaces.push(face); }
+      })
+    })
+    return sharedFaces;
+  }
+
   createMesh(scene) {
+    let sharedFaces = this.computeSharedFaces();
     let positions = [];
     let normals = [];
     let uvs = [];
@@ -198,8 +229,12 @@ class Model {
           positions.push(p.x,p.y,p.z);
           normals.push(nrm.x,nrm.y,nrm.z);
         });
+
+        let yoff = 0;
+        if(sharedFaces.indexOf(cell.faces[faceIndex])>=0) 
+          yoff = 0.5;
         // console.log(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y]));
-        uvs.push(...(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y])));
+        uvs.push(...(uvs0.flatMap(([x,y])=>[x+0.25 * faceIndex, y+yoff])));
         let i = vCount;
         indices.push(i,i+1,i+2);
         faceTable.push(cellIndex);
@@ -232,25 +267,29 @@ class Model {
 
     //let myCanvas = document.getElementById("mycanvas");
     //ctx = myCanvas.getContext('2d');
-    for(let i=0; i<4; i++) {
-      let tpts = uvs0.map(([x,y]) => [x * 1024 + i*256, 512 - y * 512]);
-      console.log(tpts);
-      ctx.beginPath();
-      ctx.moveTo(tpts[2][0], tpts[2][1]);
-      for(let j=0;j<=2;j++)
-        ctx.lineTo(tpts[j][0], tpts[j][1]);
-      ctx.closePath();
-      ctx.fillStyle = "orange";
-      ctx.fill();
-      ctx.strokeStyle = "black";
-      ctx.lineWidth=15;
-      ctx.stroke();
-  
-      ctx.font = 'bold 120px monospace';
-      // const font = "bold 44px monospace";
-      // dtex.drawText("ABCD"[0],100,100, font, "black", null, false, false);
-      ctx.fillStyle = "black";
-      ctx.fillText("ABCD"[i], tpts[0][0]+65, tpts[0][1] - 20);
+    for(let row=0; row<2; row++) {
+      for(let i=0; i<4; i++) {
+        let tpts = uvs0.map(([x,y]) => 
+          [x * 1024 + i*256, 512 - y * 512 - row * 256]);
+        console.log(tpts);
+        ctx.beginPath();
+        ctx.moveTo(tpts[2][0], tpts[2][1]);
+        for(let j=0;j<=2;j++)
+          ctx.lineTo(tpts[j][0], tpts[j][1]);
+        ctx.closePath();
+        ctx.fillStyle = row == 0 ? "orange" : "red";
+        ctx.fill();
+        ctx.strokeStyle = "black";
+        ctx.lineWidth=15;
+        ctx.stroke();
+    
+        ctx.font = 'bold 120px monospace';
+        // const font = "bold 44px monospace";
+        // dtex.drawText("ABCD"[0],100,100, font, "black", null, false, false);
+        ctx.fillStyle = "black";
+        ctx.fillText("ABCD"[i], tpts[0][0]+65, tpts[0][1] - 20);
+    
+      }
   
     }
 
@@ -265,7 +304,7 @@ class Model {
     let pts = this.cells[j].vertices.map(v=>v.pos);
     let ii = this.cells[j].vertices.map(v=>v.index);
     let cellCenter = pts[0].add(pts[1]).add(pts[2]).add(pts[3]).scale(0.25);
-    pts = pts.map(p => BABYLON.Vector3.Lerp(cellCenter, p, 1.1));
+    pts = pts.map(p => BABYLON.Vector3.Lerp(cellCenter, p, 1.2));
     let lines = [[pts[0],pts[1],pts[2],pts[3],pts[0]],[pts[0],pts[2]],[pts[3],pts[1]]];
     if(this.cage) 
       this.cage = BABYLON.MeshBuilder.CreateLineSystem("ls", {
@@ -276,6 +315,8 @@ class Model {
           lines: lines, 
           updatable: true}, 
           scene);
+
+    /*
 
     if(this.labels === undefined) {
       let labels = this.labels = [];
@@ -291,7 +332,7 @@ class Model {
       tex.drawText(ii[i], 10, 60, "bold 32px monospace", 'white', null, true, false);
       tex.update();  
     }
-    
+    */
 
     
 
@@ -328,6 +369,7 @@ function onModelChanged() {
   model.createMesh(viewer.scene);
   let boundingSphere = model.mesh.getBoundingInfo().boundingSphere;
   viewer.camera.setTarget(boundingSphere.center);  
+  viewer.camera.radius = Math.max(10, boundingSphere.radius * 2);
   updateCellNumber();
 }
 
@@ -362,6 +404,14 @@ function deleteCurrentCell() {
   if(typeof(currentIndex) == "number") {
     deleteCell(currentIndex);
   }
+}
+
+function reset() {
+  model.cells = [];
+  model.cellTable = {};
+  model.addFirstCell();
+  onModelChanged();
+  setCurrentIndex(model.cells[model.cells.length-1].index);
 }
 
 function setCurrentIndex(index) {
