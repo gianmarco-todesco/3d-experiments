@@ -266,7 +266,7 @@ class Polyhedron {
             let ii = f.vertices.map(v=>v.index);
             for(let i=1;i+1<m;i++) indices.push(ii[0],ii[i+1],ii[i]);
         });
-        console.log(indices);
+        // console.log(indices);
         var vd = new BABYLON.VertexData();
         vd.positions = positions;
         vd.indices = indices;
