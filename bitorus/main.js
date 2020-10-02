@@ -346,7 +346,7 @@ function extrude(pts, faces, faceIndex, d) {
 
 
 
-function addHandle(pts, faces, f1, f2, dcenter, r) {
+function addHandle(pts, faces, f1, f2, center, r) {
     let face1 = faces[f1];
     let face2 = faces[f2];
     let c1 = new BABYLON.Vector3(0,0,0);
@@ -358,7 +358,8 @@ function addHandle(pts, faces, f1, f2, dcenter, r) {
     c1.scaleInPlace(1/face1.length);
     c2.scaleInPlace(1/face2.length);
 
-    let center = c.add(dcenter);
+    // let center = c.add(dcenter);
+    let dcenter = c.subtract(center);
 
     let R = dcenter.length();
     let e1 = center.subtract(c).normalize();
@@ -562,40 +563,103 @@ function makeModel_old(scene, t) {
 
 }
 
+let qq = 0.7;
 
-function makeModel(scene, t) {
+function makeModel_old2(scene, t) {
     let pts = [];
     let faces = [];
 
 
-    let t1 = ltime(t,0,0.5);
-    let t2 = ltime(t,0,0.5);
+    let t1 = ltime(t,0,0.45);
+    let t2 = ltime(t,0.55,1.0);
     
 
-    let x0 = 1/Math.sqrt(3) * (1-t1) + 1 * t1;
-    let d = 2*(1-t1);
+    let shoulders;
+    let q,x0,d,mat;
+    let u = 0.5;
 
-    let q = [[0,1+d],[x0,d],[-x0,d]];    
-    for(let i=0;i<3;i++) {
-        let x = q[i][0]; 
-        let z = q[i][1];        
-        for(let j=0;j<2;j++) {
-            pts.push(new BABYLON.Vector3(x,1,z));
-            pts.push(new BABYLON.Vector3(x,-1,z));
-            x = -x;
-            z = -z;
+    if(t1<1.0)
+    {
+        qq = 0.01 * t1 + 1 * (1-t1);
+        x0 = 1/Math.sqrt(3) * (1-t1) + 1 * t1;
+        d = 2*(1-t1);
+        q = [[0,u*qq],[u*x0,0],[-u*x0,0]];    
+
+        for(let i=0;i<3;i++) {
+            let x = q[i][0]; 
+            let z = q[i][1];        
+            for(let j=0;j<2;j++) {
+                let sgn = (-1+2*j);
+                mat = BABYLON.Matrix.RotationX(-sgn*(1-t1)*0.6)
+                    .multiply(BABYLON.Matrix.Translation(0,(1-t1)*3,-sgn*d));
+                pts.push(BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x,u,z), mat));
+                pts.push(BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x,-u,z), mat));
+                x = -x;
+                z = -z;
+            }
         }
-    }
-    faces.push([2,10,11,3],[4,0,1,5],[0,8,9,1],[6,2,3,7]);
-    if(t1<0.9) faces.push([0,4,8],[1,9,5],[2,6,10],[3,11,7],[4,10,6,8],[5,9,7,11]);
-    else faces.push([0,4,10,2,6,8],[1,9,7,3,11,5]);
-    faces.push([10,4,5,11],[8,6,7,9]);
+        shoulders = [[2,10,11,3],[4,0,1,5],[0,8,9,1],[6,2,3,7]];
+        faces.push(...shoulders);
+        if(t1<0.9) faces.push([0,4,8],[1,9,5],[2,6,10],[3,11,7],[4,10,6,8],[5,9,7,11]);
+        else faces.push([0,4,10,2,6,8],[1,9,7,3,11,5]);
+        faces.push([10,4,5,11],[8,6,7,9]);
+        addHandle(pts, faces, 1,2, new BABYLON.Vector3(0,0,2), u);
+        addHandle(pts, faces, 3,0, new BABYLON.Vector3(0,0,-2), u);
     
+    }
+    else if(true)
+    {
+        qq = 0.01 * (1-t2) + 1 * t2;
+
+        let q = [[0,u*qq],[u*qq,0],[0,-u*qq],[-u*qq,0]];
+        for(let i=0;i<4;i++) {
+            let x = q[i][0]; 
+            let z = q[i][1];        
+            pts.push(new BABYLON.Vector3(x,u,z));
+            pts.push(new BABYLON.Vector3(x,-u,z));
+        }
+        shoulders = [[4,2,3,5],[2,0,1,3],[0,6,7,1],[6,4,5,7]];
+        faces.push(...shoulders);
+        faces.push([0,2,4,6],[1,7,5,3]);
+        addHandle(pts, faces, 1,2, new BABYLON.Vector3(0,0,2), u);
+        addHandle(pts, faces, 3,0, new BABYLON.Vector3(0,0,-2), u);
+    
+    }
+    else
+    {
+        x0 = 1/Math.sqrt(3) * t2 + 1 * (1-t2);
+        d = 2*t2;
+        q = [[0,1+d],[x0,d],[-x0,d]];    
+        for(let i=0;i<3;i++) {
+            let x = q[i][1]; 
+            let z = -q[i][0];        
+            for(let j=0;j<2;j++) {
+                pts.push(new BABYLON.Vector3(x,1,z));
+                pts.push(new BABYLON.Vector3(x,-1,z));
+                x = -x;
+                z = -z;
+            }
+        }
+        shoulders = [[4,0,1,5],[0,8,9,1],[6,2,3,7],[2,10,11,3]];
+        faces.push(...shoulders);
+        if(t1<0.9) faces.push([0,4,8],[1,9,5],[2,6,10],[3,11,7],[4,10,6,8],[5,9,7,11]);
+        else faces.push([0,4,10,2,6,8],[1,9,7,3,11,5]);
+        faces.push([10,4,5,11],[8,6,7,9]);
+
+        addHandle(pts, faces, 1,2, new BABYLON.Vector3(0,0,2), 1);
+        addHandle(pts, faces, 3,0, new BABYLON.Vector3(0,0,-2), 1);
+    
+    }
+
+
+    /*
     extrude(pts,faces,0,2);
     extrude(pts,faces,1,2);
     extrude(pts,faces,2,2);
     extrude(pts,faces,3,2);
-    
+    */
+
+
 
     let ph = new Polyhedron();
     ph.build(pts, faces);
@@ -610,8 +674,10 @@ function makeModel(scene, t) {
         let ph2 = ph.catmullClark();
         ph2.updateVertices();
         ph2 = ph2.catmullClark();
-        ph2.updateVertices();
-        ph2 = ph2.catmullClark();
+        //ph2.updateVertices();
+        //ph2 = ph2.catmullClark();
+        //ph2.updateVertices();
+        //ph2 = ph2.catmullClark();
 
         /*
         model = ph2.createLineSystem(scene, 
@@ -628,3 +694,137 @@ function makeModel(scene, t) {
     }
 
 }
+
+
+
+function makeModel_old2(scene, t) {
+    let pts = [];
+    let faces = [];
+
+
+    let t1 = ltime(t,0,0.45);
+    let t2 = ltime(t,0.55,1.0);
+    
+    pts = [[-1,-1,-4],[ 1,-1,-4],[-1, 1,-4],[ 1, 1,-4]].map(([x,y,z])=>new BABYLON.Vector3(x,y,z));
+    faces = [[0,2,3,1],[0,1,3,2]];
+
+    if(t1<1.0) {
+        extrude(pts,faces,1,3);
+        extrude(pts,faces,1,2);
+        extrude(pts,faces,1,3);
+    }
+    else {
+        extrude(pts,faces,1,3);
+        extrude(pts,faces,1,1);
+        extrude(pts,faces,1,1);
+        extrude(pts,faces,1,3);
+    }
+
+
+    let ph = new Polyhedron();
+    ph.build(pts, faces);
+    if(cage) cage.dispose();
+    cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
+
+    if(model) { model.dispose(); model = null; }
+
+    if(true)
+    {
+        ph.updateVertices();
+        let ph2 = ph.catmullClark();
+        ph2.updateVertices();
+        ph2 = ph2.catmullClark();
+        //ph2.updateVertices();
+        //ph2 = ph2.catmullClark();
+        //ph2.updateVertices();
+        //ph2 = ph2.catmullClark();
+
+        /*
+        model = ph2.createLineSystem(scene, 
+            new BABYLON.Color4(0,1,1,1),
+            false);
+            */
+        model = ph2.createMesh(scene);
+        if(material==null) {
+            material = new BABYLON.StandardMaterial('a',scene);
+            material.diffuseColor.set(0.8,0.3,0.1);            
+        }
+        model.material = material;
+
+    }
+
+}
+
+//===========================================================
+
+
+
+function makeModel(scene, t) {
+    let faces = [];
+
+
+    let pts2, edges2, faces2;
+    
+    let x = 0.8 * (1-t) + 0.02 * t;
+
+    pts2 = [[-1,0],[-x,-1],[x,-1],[1,0],[x,1],[-x,1]];
+    let m = 6;
+    if(t<0.5) {
+        m = 8;
+        pts2.push([0,-1],[0,1]);
+        edges2 = [[0,5],[4,3],[3,2],[1,0],[5,7],[7,4],[2,6],[6,1]];
+        faces2 = [[0,1,5],[5,1,6,7],[7,6,2,4],[4,2,3]];
+        
+    } else {
+        edges2 = [[0,5],[4,3],[3,2],[1,0],[5,4],[2,1]];
+        faces2 = [[0,1,2,3,4,5]];
+    
+    }
+
+    let pts = pts2.flatMap(([x,y]) => [
+        new BABYLON.Vector3(x,.5,y),
+        new BABYLON.Vector3(x,-.5,y)        
+    ]);
+    edges2.forEach(([i1,i2])=> {
+        faces.push([i2*2,i1*2,i1*2+1,i2*2+1]);
+    });
+    faces2.forEach((L)=> {
+        faces.push(L.map(j=>2*j+1));
+        faces.push(L.slice().reverse().map(j=>2*j));
+    });        
+
+
+    for(let i=0; i<4;i++) {
+        extrude(pts,faces,i,0.2);
+        extrude(pts,faces,i,1.8);    
+    }
+    
+
+
+
+    let ph = new Polyhedron();
+    ph.build(pts, faces);
+    if(cage) cage.dispose();
+    // cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
+
+    if(model) { model.dispose(); model = null; }
+
+    if(true)
+    {
+        ph.updateVertices();
+        let ph2 = ph.catmullClark();
+        for(let i=0;i<2;i++) {
+            ph2.updateVertices();
+            ph2 = ph2.catmullClark();    
+        }
+        model = ph2.createMesh(scene);
+        if(material==null) {
+            material = new BABYLON.StandardMaterial('a',scene);
+            material.diffuseColor.set(0.8,0.3,0.1);            
+        }
+        model.material = material;
+
+    }
+
+}
+
