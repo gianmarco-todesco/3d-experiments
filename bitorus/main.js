@@ -411,7 +411,7 @@ function makeModel(scene, globalt) {
         rot2a = rotateZAround(theta, rot2Center);
         rot2b = rotateZAround(-theta, rot2Center);    
     } else {
-        let d = theta*rotationRadius;
+        let d = separation*0.5;
         rot2a = BABYLON.Matrix.Translation(-d,0,0);
         rot2b = BABYLON.Matrix.Translation( d,0,0);
     }
