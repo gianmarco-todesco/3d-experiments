@@ -24,7 +24,9 @@
                 left:0;
                 top:0;
             }
-
+            input {
+                width:800px;
+            }
         </style>
         <script src="https://preview.babylonjs.com/babylon.js"></script>
         <script src="https://code.jquery.com/pep/0.4.3/pep.js"></script>
@@ -35,7 +37,7 @@
   <body>
     <canvas id="renderCanvas" touch-action="none"></canvas> <!-- touch-action="none" for best results from PEP -->
     <div id="controls">
-        <input type="range" name="rangeInput" min="0" max="100" oninput="showVal(this.value)">
+        <input type="range" name="rangeInput" min="0" max="100" value="0" oninput="showVal(this.value)">
     </div>
    </body>
 </html>
