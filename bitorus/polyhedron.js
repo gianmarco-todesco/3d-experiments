@@ -241,6 +241,7 @@ class Polyhedron {
         });
         if(showFaces) {
             edgeColor = new BABYLON.Color4(1,0,1,1);
+            let nrmColor = new BABYLON.Color4(0,1,1,1);
             this.faces.forEach(face => {
                 let center = face.computeCenter();
                 let m = face.vertices.length;
@@ -248,8 +249,17 @@ class Polyhedron {
                 pts.push(BABYLON.Vector3.Lerp(pts[pts.length-1],pts[0],0.9));
                 lines.push(pts);
                 colors.push(pts.map(p=>edgeColor));
+
+                pts = face.vertices.map(v=>v.p);
+                let c = pts.reduce((a,b)=>a.add(b),new BABYLON.Vector3(0,0,0)).scale(1/pts.length);
+                let nrm = BABYLON.Vector3.Cross(
+                    pts[0].subtract(c),
+                    pts[1].subtract(c)).normalize();
+                lines.push([c,c.add(nrm)]);
+                colors.push([nrmColor,nrmColor]);
             });
     
+
         }
 
         let lineSystem = BABYLON.MeshBuilder.CreateLineSystem(

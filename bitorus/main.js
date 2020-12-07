@@ -1,5 +1,8 @@
 "use strict";
 
+let cageEnabled = false;
+let surfaceEnabled = true;
+
 function assert(condition, message) {
     if (!condition) {
         message = message || "Assertion failed";
@@ -17,12 +20,13 @@ class Viewer {
         let engine = this.engine = new BABYLON.Engine(canvas, true); 
         let scene = this.scene = new BABYLON.Scene(engine);
         let camera = this.camera = new BABYLON.ArcRotateCamera("Camera", 
-            -1.44, 1.2, 
-            10, 
+            -1.44, 0.4, 
+            150, 
             new BABYLON.Vector3(0,0,0), 
             scene);
+        camera.fov = 0.1;
         camera.attachControl(canvas, true);
-        camera.wheelPrecision = 50;
+        camera.wheelPrecision = 10;
 
         // var light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(1, 1, 0), scene);
         var light2 = new BABYLON.PointLight("light2", new BABYLON.Vector3(0, 0, 0), scene);            
@@ -104,224 +108,57 @@ class Viewer {
 
 
 let viewer;
+let torus;
+let currentT = 0.0;
 
 window.onload = function() {
     viewer = new Viewer('renderCanvas');
-    viewer.createGrid();
-    makeModel(viewer.scene, 0.5);
+    // viewer.createGrid();
+    createTorus(viewer.scene);
+
+    viewer.scene.onKeyboardObservable.add(onKeyEvent);
+    
+    makeModel(viewer.scene, currentT);
     viewer.runRenderLoop();
 }
 
 let model = null;
 
+
+function onKeyEvent(kbInfo) {
+    if(kbInfo.type != BABYLON.KeyboardEventTypes.KEYDOWN) return;
+    let key = kbInfo.event.key;
+    if(key == "c") { cageEnabled=!cageEnabled; updateModel(); }
+    else if(key == 's') { surfaceEnabled=!surfaceEnabled; updateModel(); }
+
+}
+
+function updateModel() {
+    makeModel(viewer.scene, currentT);
+}
+
 function showVal(v) {
-    let t = v/100;
+    let t = currentT = v/100;
     makeModel(viewer.scene, t);
 }
 
 
-/*
-class Polyhedron {
-    constructor() {
-        this.pts = [];
-        this.lines = [];
-    }
-    createLineSystem(scene) {
-        let lines = [];
-        let pts = this.pts;
-        this.lines.forEach(line => {
-            lines.push(line.map(j=>pts[j]));
-        })
-        return BABYLON.MeshBuilder.CreateLineSystem("lines", { lines: lines }, scene);
-    }
-
-    extrude(face, d) {
-        let k = this.pts.length;
-        let fPts = face.map(j=>this.pts[j]);
-        let nrm = BABYLON.Vector3
-            .Cross(fPts[1].subtract(fPts[0]), fPts[2].subtract(fPts[0]))
-            .normalize();
-        let delta = nrm.scale(d);
-        fPts.forEach(p => {this.pts.push(delta.add(p))});
-        let m = face.length;
-        let q = [];
-        for(let j=0; j<m; j++) {
-            q.push(k+j);
-            let j1 = (j+1)%m;
-            this.lines.push([face[j],face[j1],k+j1,k+j]);
-        }
-        this.lines.push(q);
-
-    }
+function createTorus(scene) {
+    torus = BABYLON.MeshBuilder.CreateTorus('t',{
+        diameter : 9,
+        thickness : 0.5,
+        tessellation : 64
+    },scene);
+    torus.material = new BABYLON.StandardMaterial('m', scene);
+    torus.material.diffuseColor.set(0.2,0.6,0.8,1.0);
+    torus.rotation.x = Math.PI/2;
+    torus.position.y = 3.5;
 }
-*/
-
 
 function ltime(t, a,b) { return t<=a ? 0 : t>=b ? 1 : (t-a)/(b-a); }
 
 let gh;
 
-/*
-function makeModel2(scene, t) {
-    console.log(t);
-    let pts = [
-        [-1,-1,-1],[1,-1,-1],[-1,1,-1],[1,1,-1],
-        [-1,-1,1],[1,-1,1],[-1,1,1],[1,1,1]
-        ].map(([x,y,z])=>new BABYLON.Vector3(x,y,z));
-    let faces = [[0,1,3,2],[4,6,7,5],[1,0,4,5],[3,1,5,7],[2,3,7,6],[0,2,6,4]];
-    let ph = new Polyhedron2();
-    gh = ph;
-    ph.build(pts,faces);
-    if(model) model.dispose();
-    model = ph.createLineSystem(scene);
-
-    let start = performance.now();
-    let ph2 = ph.catmullClark();
-    console.log(performance.now()-start);
-    ph2.createLineSystem(scene, new BABYLON.Color4(1,0,1,1));
-
-}
-
-
-function makeModel3(scene, t) {
-    let lines = [];
-    let matrix = BABYLON.Matrix.Identity();
-    let ph = new Polyhedron();
-
-
-    function addFace(pts) {
-        let f = [];
-        pts.forEach(([x,y,z])=> {
-            let p = BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x,y,z), matrix);
-            f.push(ph.pts.length);
-            ph.pts.push(p);
-        });
-        ph.lines.push(f.concat([f[0]]));
-        return f;
-    }
-
-    function addLines(...lines) {
-        lines.forEach(line=>ph.lines.push(line));
-    }
-
-    let u = 0.5;
-    let quad = [[-u,-u,0],[u,-u,0],[u,u,0],[-u,u,0]];
-
-    let d1 = u/Math.tan(Math.PI/8);
-    let d2 = u/Math.tan(Math.PI/6);
-    let phi1 = Math.PI/4;
-    let phi2 = Math.PI/3;
-    
-    let d, phi, k;
-
-    let nodeMatrix1 = BABYLON.Matrix.Translation(0,0,t*3);
-    let nodeMatrix2 = nodeMatrix1.multiply(BABYLON.Matrix.RotationY(Math.PI));
-
-    let t1 = ltime(t,0.0,0.3);
-    d = d1 * (1-t1) + d2 * t1;
-    phi = phi1 * (1-t1) + phi2 * t1;
-
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(-phi))
-        .multiply(nodeMatrix1);
-    let f1 = addFace(quad);
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(phi))
-        .multiply(nodeMatrix1);
-    let f2 = addFace(quad);
-        
-    addLines([f1[1],f2[0]],[f1[2],f2[3]]);
-
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(-phi))
-        .multiply(nodeMatrix2);
-    let f3 = addFace(quad);
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(phi))
-        .multiply(nodeMatrix2);
-    let f4 = addFace(quad);
-        
-    addLines([f3[1],f4[0]],[f3[2],f4[3]]);
-
-    /*
-
-
-    let nodeMatrix2 = BABYLON.Matrix.Translation(0,0,t).multiply(BABYLON.Matrix.RotationY(Math.PI));
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(-phi))
-        .multiply(nodeMatrix2);
-    addPoints(quad);
-    k = 8;
-    ph.lines.push([k,k+1,k+2,k+3,k]);
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(phi))
-        .multiply(nodeMatrix2);
-    addPoints(quad);
-    k = 12;
-    ph.lines.push([k,k+1,k+2,k+3,k]);
-    ph.lines=ph.lines.concat([[k-2,k+3],[k-3,k]]);
-
-    * /
-
-    if(t<0.5) {
-        addLines([f1[0],f4[1]],[f1[3],f4[2]],[f2[1],f3[0]],[f2[2],f3[3]]);
-
-
-    } else {
-        let t2 = ltime(t, 0.5, 0.6);
-        let s = u*(2*(1-t2)+1*t2);
-        let quad2 = [[-s,-u,0],[s,-u,0],[s,u,0],[-s,u,0]];
-
-        matrix = BABYLON.Matrix.Translation(0,0,d)
-            .multiply(BABYLON.Matrix.RotationY(Math.PI))
-            .multiply(nodeMatrix1);
-        let f5 = addFace(quad2);
-        matrix = BABYLON.Matrix.Translation(0,0,d)
-            .multiply(BABYLON.Matrix.RotationY(Math.PI))
-            .multiply(nodeMatrix2);
-        let f6 = addFace(quad2);
-
-        addLines([f5[0],f6[1]],[f5[1],f6[0]],[f5[2],f6[3]],[f5[3],f6[2]]);
-
-        addLines([f1[0],f5[1]],[f1[3],f5[2]], [f2[1],f5[0]], [f2[2],f5[3]]);
-
-        addLines([f3[0],f6[1]],[f3[3],f6[2]], [f4[1],f6[0]], [f4[2],f6[3]]);
-
-        /*
-        matrix = BABYLON.Matrix.Translation(0,0,d)
-            .multiply(BABYLON.Matrix.RotationY(Math.PI))
-            .multiply(nodeMatrix1);
-        k = ph.pts.length;
-        addPoints(quad);
-        ph.lines.push([k,k+1,k+2,k+3,k]);
-
-        matrix = BABYLON.Matrix.Translation(0,0,d)
-            .multiply(BABYLON.Matrix.RotationY(Math.PI))
-            .multiply(nodeMatrix2);
-        k = ph.pts.length;
-        addPoints(quad);
-        ph.lines.push([k,k+1,k+2,k+3,k]);
-
-        ph.lines=ph.lines.concat([[11,6],[8,5],[14,3],[13,0]]);
-        * /
-    }
-
-    ph.extrude(f1,2);
-    ph.extrude(f2,2);
-    ph.extrude(f3,2);
-    ph.extrude(f4,2);
-
-
-    if(model) model.dispose();
-    model = ph.createLineSystem();
-    
-}
-*/
 
 let cage;
 
@@ -346,9 +183,10 @@ function extrude(pts, faces, faceIndex, d) {
 
 
 
-function addHandle(pts, faces, f1, f2, center, r) {
+function addHandle(pts, faces, f1, f2) {
     let face1 = faces[f1];
     let face2 = faces[f2];
+    
     let c1 = new BABYLON.Vector3(0,0,0);
     let c2 = new BABYLON.Vector3(0,0,0);
     face1.forEach(i=>c1.addInPlace(pts[i]));
@@ -358,35 +196,104 @@ function addHandle(pts, faces, f1, f2, center, r) {
     c1.scaleInPlace(1/face1.length);
     c2.scaleInPlace(1/face2.length);
 
-    // let center = c.add(dcenter);
-    let dcenter = c.subtract(center);
-
-    let R = dcenter.length();
-    let e1 = center.subtract(c).normalize();
-    let e0 = c1.subtract(c2);
-    e0 = e0.subtract(e1.scale(BABYLON.Vector3.Dot(e1,e0))).normalize();
-    let e2 = BABYLON.Vector3.Cross(e0,e1).normalize();
+    let norm1 = BABYLON.Vector3.Cross(
+        pts[face1[0]].subtract(c1),
+        pts[face1[1]].subtract(c1)).normalize();
+    let norm2 = BABYLON.Vector3.Cross(
+        pts[face2[0]].subtract(c2),
+        pts[face2[1]].subtract(c2)).normalize();
     
+
+    let c12 = c2.subtract(c1);
+    let c12midPoint = BABYLON.Vector3.Lerp(c1,c2,0.5);
+    let e0 = c12.clone().normalize();
+    let e1 = norm1.add(norm2);
+    e1 = e1.subtract(e0.scale(BABYLON.Vector3.Dot(e0,e1))).normalize();
+    let e2 = BABYLON.Vector3.Cross(e0,e1).normalize();
+
+    let cs = BABYLON.Vector3.Dot(norm1,norm2);
+    cs = Math.max(-1,Math.min(1,cs));
+    let normsAngle = Math.acos(cs);
+    let theta = (Math.PI-normsAngle)/2;
+
+    if(theta < 1.0e-8)
+    {
+        // normals are aligned, with opposite direction:
+        // no arc: just link the faces
+        let t1 = face1;
+        let t2 = [face2[1],face2[0],face2[3],face2[2]];
+        for(let i=0; i<4; i++) {
+            let i1 = (i+1)%4;
+            let t = [t1[i],t1[i1],t2[i1],t2[i]];
+            if(i<2) faces[i==0 ? f1 : f2] = t;
+            else faces.push(t);
+        }
+        return;
+    }
+
+    let h = c12.length()*0.5 / Math.tan(theta);
+
+    if(BABYLON.Vector3.Dot(BABYLON.Vector3.Cross(norm1,norm2), e2)<0) 
+        h = -h;
+
+    let center = c12midPoint.subtract(e1.scale(h));
+
+    let R = 0.5*(center.subtract(c1).length()+center.subtract(c2).length());
+
+    /*
+    let c_lines = [
+        [c1.add(norm1),c1,center,c2,c2.add(norm2)],
+        [center.add(e0),center,center.add(e1)],
+        [center, center.add(e1.scale(h))]
+    ];
+    let lineSystem = BABYLON.MeshBuilder.CreateLineSystem(
+        "lines", {lines: c_lines},  viewer.scene);
+    */
+
+    let e;
+    e = c1.subtract(center);
+    let phi1 = Math.atan2(
+        BABYLON.Vector3.Dot(e0,e),
+        BABYLON.Vector3.Dot(e1,e));
+    e = c2.subtract(center);
+    let phi2 = Math.atan2(
+        BABYLON.Vector3.Dot(e0,e),
+        BABYLON.Vector3.Dot(e1,e)) ;
     
     let k = pts.length;
-    let q = [[1,-1],[-1,-1],[-1,1],[1,1]];
-    for(let i=0; i<3; i++) {
-        let phi = Math.PI*2*(i+1)/4;
+
+    let a0 = c1.subtract(center).normalize();
+    let a1 = e2.subtract(a0.scale(BABYLON.Vector3.Dot(e2,a0))).normalize();
+    let q = face1.map(i=>pts[i].subtract(c1)).map(p => 
+        [BABYLON.Vector3.Dot(a0,p),BABYLON.Vector3.Dot(a1,p)]
+    );
+    // q = [[-1,-1],[1,-1],[1,1],[-1,1]];
+
+    let n = 4; // 11; // 5;
+
+
+    for(let i=0; i<n; i++) {
+        let t = (i+1)/(n+1);
+        let phi = phi1 *(1-t) + phi2 * t;
         let cs = Math.cos(phi);
         let sn = Math.sin(phi);        
         for(let j = 0; j<4; j++) {
-            let rr = R + r*q[j][0];
-            let y = r*q[j][1];
-            let p = center.add(e0.scale(rr*sn)).add(e1.scale(-rr*cs)).add(e2.scale(y));
+            let rr = R + q[j][0];
+            let y = q[j][1];
+            let p = center
+                .add(e0.scale(rr*sn))
+                .add(e1.scale(rr*cs))
+                .add(e2.scale(y));
             pts.push(p);
         }
     }
+
     let count = 0;
-    for(let i=0; i<4; i++) {
+    for(let i=0; i<n+1; i++) {
         let ki = k+4*(i-1);
         let t1 = i==0 ? face1 : [ki,ki+1,ki+2,ki+3];
         ki += 4;
-        let t2 = i==3 ? [face2[1],face2[0],face2[3],face2[2]] : [ki,ki+1,ki+2,ki+3];
+        let t2 = i==n ? [face2[1],face2[0],face2[3],face2[2]] : [ki,ki+1,ki+2,ki+3];
         
         for(let j=0; j<4; j++) {
             let j1 = (j+1)%4;
@@ -402,414 +309,24 @@ function addHandle(pts, faces, f1, f2, center, r) {
 
 let material = null;
 
-function makeModel_old(scene, t) {
-    let matrix = BABYLON.Matrix.Identity();
-    
-    let pts = [];
-    function addRib(pp) {
-        let f = [];
-        pp.forEach(([x,y,z])=> {
-            let p = BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x,y,z), matrix);
-            f.push(pts.length);
-            pts.push(p);
-        });
-        return f;
-    }
-
-    let u = 0.5;
-    let quad = [[-u,-u,0],[u,-u,0],[u,u,0],[-u,u,0]];
-
-    let d1 = u/Math.tan(Math.PI/8);
-    let d2 = u/Math.tan(Math.PI/6);
-    let phi1 = Math.PI/4;
-    let phi2 = Math.PI/3;
-    
-    let d, phi, k;
-
-    let nodeMatrix1 = BABYLON.Matrix.Translation(0,0,t*3);
-    let nodeMatrix2 = nodeMatrix1.multiply(BABYLON.Matrix.RotationY(Math.PI));
-
-    let t1 = ltime(t,0.0,0.3);
-    d = d1 * (1-t1) + d2 * t1;
-    phi = phi1 * (1-t1) + phi2 * t1;
-
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(-phi))
-        .multiply(nodeMatrix1);
-    let r1 = addRib(quad);
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(phi))
-        .multiply(nodeMatrix1);
-    let r2 = addRib(quad);
-
-
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(-phi))
-        .multiply(nodeMatrix2);
-    let r4 = addRib(quad);
-
-    matrix = BABYLON.Matrix.Translation(0,0,d)
-        .multiply(BABYLON.Matrix.RotationY(phi))
-        .multiply(nodeMatrix2);
-    let r5 = addRib(quad);
-
-
-    let faces = [];
-    function link(ra,rb) {
-        let r = [ra[1],rb[0],rb[3],ra[2]];
-        faces.push(r);
-        return r;
-    }
-    function hface(...rs) {
-        let m = rs.length;
-        let up = [], dn = [];
-        for(let i=0; i<m; i++) {
-            let i1 = (i+1)%m;
-            up.push(rs[i][3]); if(rs[i][2]!=rs[i1][3]) up.push(rs[i][2]);
-            dn.push(rs[i][0]); if(rs[i][1]!=rs[i1][0]) dn.push(rs[i][1]);
-        }
-
-        faces.push(up, dn.reverse());
-    }
-
-    faces.push(r1,r2,r4,r5);
-    link(r1,r2);
-    link(r4,r5);
-    
-    if(t<0.35) { 
-        let r24 = link(r2,r4); 
-        let r51 = link(r5,r1);
-        hface(r1,r2);
-        hface(r4,r5);
-        hface(r24, r51);
-    } else {
-
-        let t2 = ltime(t, 0.5, 0.6);
-        let s = u*(2*(1-t2)+1*t2);
-        let quad2 = [[-s,-u,0],[s,-u,0],[s,u,0],[-s,u,0]];
-        let d1 = t2 * d;
-        matrix = BABYLON.Matrix.Translation(0,0,d1)
-            .multiply(BABYLON.Matrix.RotationY(Math.PI))
-            .multiply(nodeMatrix1);
-        let r3 = addRib(quad2);
-        matrix = BABYLON.Matrix.Translation(0,0,d1)
-            .multiply(BABYLON.Matrix.RotationY(Math.PI))
-            .multiply(nodeMatrix2);
-        let r6 = addRib(quad2);
-        // faces.push(r3,r6);
-        let r23 = link(r2,r3);
-        let r31 = link(r3,r1);
-
-        let r64 = link(r6,r4);
-        let r56 = link(r5,r6);
-        
-        let r2364 = link(r23, r64);
-        let r5631 = link(r56,r31);
-
-        hface(r1,r2,r3);
-        hface(r4,r5,r6);
-        hface(r2364, r5631);
-        
-
-
-    }
-
-    /*
-    extrude(pts, faces,0, 3);
-    extrude(pts, faces,1, 3);
-    extrude(pts, faces,2, 3);
-    extrude(pts, faces,3, 3);
-    */
-
-    addHandle(pts,faces, 0, 1, new BABYLON.Vector3(0,0,2), 0.5);
-    addHandle(pts,faces, 2, 3, new BABYLON.Vector3(0,0,-2), 0.5);
-
-    //addHandle(pts,faces, 3, 0, new BABYLON.Vector3(-2,0,0), 0.5);
-    //addHandle(pts,faces, 1, 2, new BABYLON.Vector3( 2,0,0), 0.5);
-
-    let ph = new Polyhedron();
-    ph.build(pts, faces);
-    if(cage) cage.dispose();
-    cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
-
-    if(model) { model.dispose(); model = null; }
-
-    //if(t<0.5) 
-    if(true)
-    {
-        ph.updateVertices();
-        let ph2 = ph.catmullClark();
-        ph2.updateVertices();
-        ph2 = ph2.catmullClark();
-        ph2.updateVertices();
-        ph2 = ph2.catmullClark();
-
-        /*
-        model = ph2.createLineSystem(scene, 
-            new BABYLON.Color4(0,1,1,1),
-            false);
-            */
-        model = ph2.createMesh(scene);
-        if(material==null) {
-            material = new BABYLON.StandardMaterial('a',scene);
-            material.diffuseColor.set(0.8,0.3,0.1);            
-        }
-        model.material = material;
-
-    }
-
-}
-
-let qq = 0.7;
-
-function makeModel_old2(scene, t) {
-    let pts = [];
-    let faces = [];
-
-
-    let t1 = ltime(t,0,0.45);
-    let t2 = ltime(t,0.55,1.0);
-    
-
-    let shoulders;
-    let q,x0,d,mat;
-    let u = 0.5;
-
-    if(t1<1.0)
-    {
-        qq = 0.01 * t1 + 1 * (1-t1);
-        x0 = 1/Math.sqrt(3) * (1-t1) + 1 * t1;
-        d = 2*(1-t1);
-        q = [[0,u*qq],[u*x0,0],[-u*x0,0]];    
-
-        for(let i=0;i<3;i++) {
-            let x = q[i][0]; 
-            let z = q[i][1];        
-            for(let j=0;j<2;j++) {
-                let sgn = (-1+2*j);
-                mat = BABYLON.Matrix.RotationX(-sgn*(1-t1)*0.6)
-                    .multiply(BABYLON.Matrix.Translation(0,(1-t1)*3,-sgn*d));
-                pts.push(BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x,u,z), mat));
-                pts.push(BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x,-u,z), mat));
-                x = -x;
-                z = -z;
-            }
-        }
-        shoulders = [[2,10,11,3],[4,0,1,5],[0,8,9,1],[6,2,3,7]];
-        faces.push(...shoulders);
-        if(t1<0.9) faces.push([0,4,8],[1,9,5],[2,6,10],[3,11,7],[4,10,6,8],[5,9,7,11]);
-        else faces.push([0,4,10,2,6,8],[1,9,7,3,11,5]);
-        faces.push([10,4,5,11],[8,6,7,9]);
-        addHandle(pts, faces, 1,2, new BABYLON.Vector3(0,0,2), u);
-        addHandle(pts, faces, 3,0, new BABYLON.Vector3(0,0,-2), u);
-    
-    }
-    else if(true)
-    {
-        qq = 0.01 * (1-t2) + 1 * t2;
-
-        let q = [[0,u*qq],[u*qq,0],[0,-u*qq],[-u*qq,0]];
-        for(let i=0;i<4;i++) {
-            let x = q[i][0]; 
-            let z = q[i][1];        
-            pts.push(new BABYLON.Vector3(x,u,z));
-            pts.push(new BABYLON.Vector3(x,-u,z));
-        }
-        shoulders = [[4,2,3,5],[2,0,1,3],[0,6,7,1],[6,4,5,7]];
-        faces.push(...shoulders);
-        faces.push([0,2,4,6],[1,7,5,3]);
-        addHandle(pts, faces, 1,2, new BABYLON.Vector3(0,0,2), u);
-        addHandle(pts, faces, 3,0, new BABYLON.Vector3(0,0,-2), u);
-    
-    }
-    else
-    {
-        x0 = 1/Math.sqrt(3) * t2 + 1 * (1-t2);
-        d = 2*t2;
-        q = [[0,1+d],[x0,d],[-x0,d]];    
-        for(let i=0;i<3;i++) {
-            let x = q[i][1]; 
-            let z = -q[i][0];        
-            for(let j=0;j<2;j++) {
-                pts.push(new BABYLON.Vector3(x,1,z));
-                pts.push(new BABYLON.Vector3(x,-1,z));
-                x = -x;
-                z = -z;
-            }
-        }
-        shoulders = [[4,0,1,5],[0,8,9,1],[6,2,3,7],[2,10,11,3]];
-        faces.push(...shoulders);
-        if(t1<0.9) faces.push([0,4,8],[1,9,5],[2,6,10],[3,11,7],[4,10,6,8],[5,9,7,11]);
-        else faces.push([0,4,10,2,6,8],[1,9,7,3,11,5]);
-        faces.push([10,4,5,11],[8,6,7,9]);
-
-        addHandle(pts, faces, 1,2, new BABYLON.Vector3(0,0,2), 1);
-        addHandle(pts, faces, 3,0, new BABYLON.Vector3(0,0,-2), 1);
-    
-    }
-
-
-    /*
-    extrude(pts,faces,0,2);
-    extrude(pts,faces,1,2);
-    extrude(pts,faces,2,2);
-    extrude(pts,faces,3,2);
-    */
-
-
-
-    let ph = new Polyhedron();
-    ph.build(pts, faces);
-    if(cage) cage.dispose();
-    cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
-
-    if(model) { model.dispose(); model = null; }
-
-    if(true)
-    {
-        ph.updateVertices();
-        let ph2 = ph.catmullClark();
-        ph2.updateVertices();
-        ph2 = ph2.catmullClark();
-        //ph2.updateVertices();
-        //ph2 = ph2.catmullClark();
-        //ph2.updateVertices();
-        //ph2 = ph2.catmullClark();
-
-        /*
-        model = ph2.createLineSystem(scene, 
-            new BABYLON.Color4(0,1,1,1),
-            false);
-            */
-        model = ph2.createMesh(scene);
-        if(material==null) {
-            material = new BABYLON.StandardMaterial('a',scene);
-            material.diffuseColor.set(0.8,0.3,0.1);            
-        }
-        model.material = material;
-
-    }
-
-}
-
-
-
-function makeModel_old2(scene, t) {
-    let pts = [];
-    let faces = [];
-
-
-    let t1 = ltime(t,0,0.45);
-    let t2 = ltime(t,0.55,1.0);
-    
-    pts = [[-1,-1,-4],[ 1,-1,-4],[-1, 1,-4],[ 1, 1,-4]].map(([x,y,z])=>new BABYLON.Vector3(x,y,z));
-    faces = [[0,2,3,1],[0,1,3,2]];
-
-    if(t1<1.0) {
-        extrude(pts,faces,1,3);
-        extrude(pts,faces,1,2);
-        extrude(pts,faces,1,3);
-    }
-    else {
-        extrude(pts,faces,1,3);
-        extrude(pts,faces,1,1);
-        extrude(pts,faces,1,1);
-        extrude(pts,faces,1,3);
-    }
-
-
-    let ph = new Polyhedron();
-    ph.build(pts, faces);
-    if(cage) cage.dispose();
-    cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
-
-    if(model) { model.dispose(); model = null; }
-
-    if(true)
-    {
-        ph.updateVertices();
-        let ph2 = ph.catmullClark();
-        ph2.updateVertices();
-        ph2 = ph2.catmullClark();
-        //ph2.updateVertices();
-        //ph2 = ph2.catmullClark();
-        //ph2.updateVertices();
-        //ph2 = ph2.catmullClark();
-
-        /*
-        model = ph2.createLineSystem(scene, 
-            new BABYLON.Color4(0,1,1,1),
-            false);
-            */
-        model = ph2.createMesh(scene);
-        if(material==null) {
-            material = new BABYLON.StandardMaterial('a',scene);
-            material.diffuseColor.set(0.8,0.3,0.1);            
-        }
-        model.material = material;
-
-    }
-
-}
-
 //===========================================================
 
+function rotateZAround(theta, c) {
+    const M = BABYLON.Matrix;
+    return M.Translation(-c.x,-c.y,-c.z)
+        .multiply(M.RotationZ(theta))
+        .multiply(M.Translation(c.x,c.y,c.z));
+}
 
-
-function makeModel(scene, t) {
-    let faces = [];
-
-
-    let pts2, edges2, faces2;
-    
-    let x = 0.8 * (1-t) + 0.02 * t;
-
-    pts2 = [[-1,0],[-x,-1],[x,-1],[1,0],[x,1],[-x,1]];
-    let m = 6;
-    if(t<0.5) {
-        m = 8;
-        pts2.push([0,-1],[0,1]);
-        edges2 = [[0,5],[4,3],[3,2],[1,0],[5,7],[7,4],[2,6],[6,1]];
-        faces2 = [[0,1,5],[5,1,6,7],[7,6,2,4],[4,2,3]];
-        
-    } else {
-        edges2 = [[0,5],[4,3],[3,2],[1,0],[5,4],[2,1]];
-        faces2 = [[0,1,2,3,4,5]];
-    
-    }
-
-    let pts = pts2.flatMap(([x,y]) => [
-        new BABYLON.Vector3(x,.5,y),
-        new BABYLON.Vector3(x,-.5,y)        
-    ]);
-    edges2.forEach(([i1,i2])=> {
-        faces.push([i2*2,i1*2,i1*2+1,i2*2+1]);
-    });
-    faces2.forEach((L)=> {
-        faces.push(L.map(j=>2*j+1));
-        faces.push(L.slice().reverse().map(j=>2*j));
-    });        
-
-
-    for(let i=0; i<4;i++) {
-        extrude(pts,faces,i,0.2);
-        extrude(pts,faces,i,1.8);    
-    }
-    
-
-
-
+function doMakeModel(scene, pts, faces) {
     let ph = new Polyhedron();
     ph.build(pts, faces);
     if(cage) cage.dispose();
-    // cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
+    if(cageEnabled) cage = ph.createLineSystem(scene, new BABYLON.Color4(1,1,1,1), true);
 
     if(model) { model.dispose(); model = null; }
 
-    if(true)
+    if(surfaceEnabled)
     {
         ph.updateVertices();
         let ph2 = ph.catmullClark();
@@ -823,8 +340,165 @@ function makeModel(scene, t) {
             material.diffuseColor.set(0.8,0.3,0.1);            
         }
         model.material = material;
+    }
+}
 
+//===========================================================
+
+function makeModel(scene, globalt) {
+    let t = globalt * 4;
+    let stage = Math.min(3,Math.floor(t));
+    t -= stage;
+    // stage 0 : ciambelle separate -> ciambelle unite
+    // stage 1 : ciambelle unite -> tre manici
+    // stage 2 : tre manici -> ciambelle unite
+    // stage 3 : ciambelle unite -> ciambelle separate
+
+    let triangleShape = (stage%2)==0 ? t : 1-t; 
+    // 0=60deg; 1=90deg
+
+    let separation = (stage%2)==0 ? 1-t : t; 
+    // 0=>unite; 1=separate
+
+    let faces = [];
+
+    let pts2, edges2, faces2;
+
+
+    // let d = 2 * separation;
+    let rotationRadius = 2;
+    let edgeLength = 0.75;
+    let h = edgeLength * ((1-triangleShape)*Math.sqrt(3)/2 + triangleShape*0.5);
+    let z = edgeLength*0.5;
+
+    // let m = 8; // 6,4
+    pts2 = [[-h,0],[0,-z],[0,-z],[h,0],[0,z],[0,z]];
+    let m = 6;
+    let bridge = false;
+    if(separation>0.1) {
+        bridge = true;
+        // m = 10;
+        // pts2.push([0,-z],[0,z],[0,-z],[0,z]);
+        /*
+        edges2 = [
+            [0,5],[4,3],[3,2],[1,0],
+            [7,6],[8,9],
+            [5,7],[9,4],[2,8],[6,1]];
+        faces2 = [[0,1,5],[5,1,6,7],[9,8,2,4],[4,2,3]];
+        */
+       edges2 = [
+        [0,5],[4,3],[3,2],[1,0],
+        [5,1],[2,4]];
+        faces2 = [[0,1,5],[4,2,3]];
+
+    } else if(separation>0) {
+        edges2 = [[0,5],[4,3],[3,2],[1,0],[5,4],[2,1]];
+        faces2 = [[0,1,5],[1,2,4,5],[2,3,4]];
+    
+    } else {
+        m = 4;
+        pts2 = [[-h,0],[0,-z],[h,0],[0,z]];
+        edges2 = [[0,3],[3,2],[2,1],[1,0]];
+        faces2 = [[0,1,2,3]];
+    }
+    // console.log("m=",m, "stage=", stage, "t=", t, "sep=",separation);
+
+    let theta = separation*Math.PI/2;
+    let rot2Center = new BABYLON.Vector3(0,-rotationRadius,0);
+    
+    let rot2a,rot2b;
+    if(stage<3) {
+        rot2a = rotateZAround(theta, rot2Center);
+        rot2b = rotateZAround(-theta, rot2Center);    
+    } else {
+        let d = separation*0.5;
+        rot2a = BABYLON.Matrix.Translation(-d,0,0);
+        rot2b = BABYLON.Matrix.Translation( d,0,0);
     }
 
+    let rot1 = BABYLON.Matrix.RotationY(stage == 1 || stage == 2 ? Math.PI/2 : 0);
+
+    let dy = edgeLength * 0.5;
+    let pts = pts2.flatMap(([x,z]) => [
+        new BABYLON.Vector3(x,dy,z),
+        new BABYLON.Vector3(x,-dy,z)        
+    ]);
+    
+    let offy = 0;
+    if(m>4) {
+        const TC = BABYLON.Vector3.TransformCoordinates;
+        [0,1,5].flatMap(i=>[2*i,2*i+1]).forEach(i=>{pts[i] = TC(pts[i],rot2a);});
+        [2,3,4].flatMap(i=>[2*i,2*i+1]).forEach(i=>{pts[i] = TC(pts[i],rot2b);});
+        
+        if(m>6) {
+            [6,7].flatMap(i=>[2*i,2*i+1]).forEach(i=>{pts[i] = TC(pts[i],rot2a);});
+            [8,9].flatMap(i=>[2*i,2*i+1]).forEach(i=>{pts[i] = TC(pts[i],rot2b);});
+        }
+        
+        let p = new BABYLON.Vector3(0,0,0);
+        for(let i=0;i<12;i++) p.addInPlace(pts[i]);
+        p.scaleInPlace(1/12);
+        offy = p.y;
+    }
+    let mat = rot1.multiply(BABYLON.Matrix.Translation(0,-offy,0));
+
+    if(stage>=2)
+    {
+        mat = mat.multiply( BABYLON.Matrix.RotationZ(Math.PI*2/3));
+    }
+
+    pts = pts.map(p => BABYLON.Vector3.TransformCoordinates(p, mat));
+    
+    edges2.forEach(([i1,i2])=> {
+        faces.push([i2*2,i1*2,i1*2+1,i2*2+1]);
+    });
+    faces2.forEach((L)=> {
+        faces.push(L.map(j=>2*j+1));
+        faces.push(L.slice().reverse().map(j=>2*j));
+    });        
+
+
+    let ww = 1.0;
+    let ww1 = ww + 0.5 * (ltime(globalt, 0.19, 0.24)-ltime(globalt, 0.30, 0.35));
+    for(let i=0; i<4;i++) {
+        extrude(pts,faces,i,ww1);
+    }
+    if(bridge) {
+        let maxLength = 0.25*theta * rotationRadius;
+        let length = Math.min(maxLength, ww);
+        [4,5].forEach(i=>{
+            extrude(pts,faces,i,length);
+        });
+        addHandle(pts, faces, 5,4);
+    }
+
+    if(stage==0 || stage==3) {
+        addHandle(pts, faces, 2, 1);
+        addHandle(pts, faces, 0, 3);
+        
+    } else {
+        addHandle(pts, faces, 1, 0);
+        addHandle(pts, faces, 3, 2); 
+    
+    }
+
+    // global movement
+    let matrix = BABYLON.Matrix.Identity();
+
+    matrix = matrix.multiply(
+        BABYLON.Matrix.Translation(0,3*(1-ltime(globalt, 0, 0.2)),0));
+
+    matrix = matrix.multiply(
+        BABYLON.Matrix.RotationX(Math.PI*(1-ltime(globalt, 0, 0.1))));
+
+    matrix = matrix.multiply(
+        BABYLON.Matrix.RotationZ(-Math.PI/6*ltime(globalt, 0.39, 0.7)));
+
+    matrix = matrix.multiply(
+        BABYLON.Matrix.Translation(0,-3*ltime(globalt, 0.39, 0.7),0));
+
+    pts = pts.map(p=>BABYLON.Vector3.TransformCoordinates(p,matrix));
+
+    doMakeModel(scene, pts,faces);
 }
 
